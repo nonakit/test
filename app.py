@@ -10,7 +10,6 @@ from docx.oxml import parse_xml
 from docx.oxml.ns import nsdecls
 import io
 import os
-import subprocess
 
 # Set page config as the FIRST Streamlit command
 st.set_page_config(page_title="Invoice Generator", page_icon="📄", layout="wide")
@@ -149,16 +148,12 @@ def set_white_borders(cell, sz=4):
     for border in ['top', 'bottom', 'left', 'right']:
         set_cell_border(cell, border, color="FFFFFF", sz=sz)
 
-def set_cell_font(cell, font_name="Courier New", font_size=10, fallback_font="Liberation Mono"):
+def set_cell_font(cell, font_name="Courier New", font_size=10):
     for paragraph in cell.paragraphs:
         for run in paragraph.runs:
             run.font.name = font_name
-            run._element.rPr.rFonts.set(qn('w:eastAsia'), font_name)
-            run._element.rPr.rFonts.set(qn('w:ascii'), font_name)
-            run._element.rPr.rFonts.set(qn('w:hAnsi'), font_name)
             run.font.size = Pt(font_size)
-            # Set a fallback font in case Courier New is unavailable
-            run._element.rPr.rFonts.set(qn('w:cs'), fallback_font)
+            run._element.rPr.rFonts.set(qn('w:eastAsia'), font_name)
 
 def apply_cell_style(cell, bg_color="#ddefd5"):
     shading_elm = parse_xml(f'<w:shd {nsdecls("w")} w:fill="{bg_color}" />')
@@ -224,9 +219,6 @@ def style_financial_table(doc, invoice_data):
             run.font.color.rgb = RGBColor.from_string('d95132')
             run.font.name = "Courier New"
             run._element.rPr.rFonts.set(qn('w:eastAsia'), "Courier New")
-            run._element.rPr.rFonts.set(qn('w:ascii'), "Courier New")
-            run._element.rPr.rFonts.set(qn('w:hAnsi'), "Courier New")
-            run._element.rPr.rFonts.set(qn('w:cs'), "Liberation Mono")
 
 def get_next_invoice_number():
     count_file = "invoice_count.txt"
@@ -268,52 +260,13 @@ def generate_invoice(invoice_data):
         for run in paragraph.runs:
             run.font.name = "Courier New"
             run._element.rPr.rFonts.set(qn('w:eastAsia'), "Courier New")
-            run._element.rPr.rFonts.set(qn('w:ascii'), "Courier New")
-            run._element.rPr.rFonts.set(qn('w:hAnsi'), "Courier New")
-            run._element.rPr.rFonts.set(qn('w:cs'), "Liberation Mono")
     
     # Generate DOCX
     docx_output = io.BytesIO()
     doc.save(docx_output)
     docx_output.seek(0)
     
-    # Save temporary DOCX file for PDF conversion
-    temp_docx = f"temp_{invoice_data.invoice_number}.docx"
-    temp_pdf = f"temp_{invoice_data.invoice_number}.pdf"
-    doc.save(temp_docx)
-    
-    # Convert DOCX to PDF using LibreOffice
-    try:
-        result = subprocess.run([
-            "soffice",
-            "--headless",
-            "--convert-to",
-            "pdf",
-            temp_docx,
-            "--outdir",
-            "."
-        ], check=True, timeout=30, capture_output=True, text=True)
-        if result.stderr:
-            st.warning(f"LibreOffice conversion warning: {result.stderr}")
-    except subprocess.CalledProcessError as e:
-        raise Exception(f"LibreOffice conversion failed: {e.stderr}")
-    except subprocess.TimeoutExpired:
-        raise Exception("LibreOffice conversion timed out")
-    
-    # Read PDF into BytesIO for download
-    pdf_output = io.BytesIO()
-    with open(temp_pdf, 'rb') as f:
-        pdf_output.write(f.read())
-    pdf_output.seek(0)
-    
-    # Clean up temporary files
-    if os.path.exists(temp_docx):
-        os.remove(temp_docx)
-    if os.path.exists(temp_pdf):
-        os.remove(temp_pdf)
-    
-    return (docx_output, f"Invoice_{invoice_data.invoice_number}.docx",
-            pdf_output, f"Invoice_{invoice_data.invoice_number}.pdf")
+    return (docx_output, f"Invoice_{invoice_data.invoice_number}.docx")
 
 # Streamlit App
 st.title("📄 Invoice Generator")
@@ -345,7 +298,7 @@ with st.form(key="invoice_form"):
     invoice_number = st.text_input("Invoice Number", value=default_invoice_number, help="Invoice number must start with 'INV2025'")
     
     # Invoice Date with manual input option using date picker
-    st.session_state.use_today = st.checkbox("Use Today's Date", value=st.session_state.use_today, key="use_today_checkbox")
+    st.session_state.use_today = st.checkbox("彼此: st.checkbox("Use Today's Date", value=st.session_state.use_today, key="use_today_checkbox")
     if st.session_state.use_today:
         invoice_date = datetime.now().strftime("%d.%m.%Y")
         st.write(f"Invoice Date: {invoice_date}")
@@ -467,25 +420,16 @@ if st.button("Generate Invoice"):
                 '[grandtotal]': format_currency(total)
             }
             invoice_data.invoice_number = invoice_number
-            docx_output, docx_filename, pdf_output, pdf_filename = generate_invoice(invoice_data)
+            docx_output, docx_filename = generate_invoice(invoice_data)
             # Only update count if using auto-generated number
             if invoice_number == default_invoice_number:
                 save_invoice_count(invoice_count)
             st.success(f"Invoice generated successfully!")
-            col1, col2 = st.columns(2)
-            with col1:
-                st.download_button(
-                    label="Download Invoice (DOCX)",
-                    data=docx_output,
-                    file_name=docx_filename,
-                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                )
-            with col2:
-                st.download_button(
-                    label="Download Invoice (PDF)",
-                    data=pdf_output,
-                    file_name=pdf_filename,
-                    mime="application/pdf"
-                )
+            st.download_button(
+                label="Download Invoice (DOCX)",
+                data=docx_output,
+                file_name=docx_filename,
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            )
     except Exception as e:
         st.error(f"An error occurred: {str(e)}")
