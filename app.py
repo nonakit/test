@@ -10,7 +10,7 @@ from docx.oxml import parse_xml
 from docx.oxml.ns import nsdecls
 import io
 import os
-import pypandoc
+import subprocess
 
 # Set page config as the FIRST Streamlit command
 st.set_page_config(page_title="Invoice Generator", page_icon="📄", layout="wide")
@@ -267,13 +267,26 @@ def generate_invoice(invoice_data):
     doc.save(docx_output)
     docx_output.seek(0)
     
-    # Generate PDF using temporary files with pypandoc
+    # Save temporary DOCX file for PDF conversion
     temp_docx = f"temp_{invoice_data.invoice_number}.docx"
     temp_pdf = f"temp_{invoice_data.invoice_number}.pdf"
     doc.save(temp_docx)
     
-    # Convert DOCX to PDF using pypandoc
-    pypandoc.convert_file(temp_docx, 'pdf', outputfile=temp_pdf)
+    # Convert DOCX to PDF using LibreOffice
+    try:
+        subprocess.run([
+            "soffice",
+            "--headless",
+            "--convert-to",
+            "pdf",
+            temp_docx,
+            "--outdir",
+            "."
+        ], check=True, timeout=30)
+    except subprocess.CalledProcessError as e:
+        raise Exception(f"LibreOffice conversion failed: {e}")
+    except subprocess.TimeoutExpired:
+        raise Exception("LibreOffice conversion timed out")
     
     # Read PDF into BytesIO for download
     pdf_output = io.BytesIO()
