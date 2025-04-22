@@ -149,12 +149,16 @@ def set_white_borders(cell, sz=4):
     for border in ['top', 'bottom', 'left', 'right']:
         set_cell_border(cell, border, color="FFFFFF", sz=sz)
 
-def set_cell_font(cell, font_name="Courier New", font_size=10):
+def set_cell_font(cell, font_name="Courier New", font_size=10, fallback_font="Liberation Mono"):
     for paragraph in cell.paragraphs:
         for run in paragraph.runs:
             run.font.name = font_name
-            run.font.size = Pt(font_size)
             run._element.rPr.rFonts.set(qn('w:eastAsia'), font_name)
+            run._element.rPr.rFonts.set(qn('w:ascii'), font_name)
+            run._element.rPr.rFonts.set(qn('w:hAnsi'), font_name)
+            run.font.size = Pt(font_size)
+            # Set a fallback font in case Courier New is unavailable
+            run._element.rPr.rFonts.set(qn('w:cs'), fallback_font)
 
 def apply_cell_style(cell, bg_color="#ddefd5"):
     shading_elm = parse_xml(f'<w:shd {nsdecls("w")} w:fill="{bg_color}" />')
@@ -220,6 +224,9 @@ def style_financial_table(doc, invoice_data):
             run.font.color.rgb = RGBColor.from_string('d95132')
             run.font.name = "Courier New"
             run._element.rPr.rFonts.set(qn('w:eastAsia'), "Courier New")
+            run._element.rPr.rFonts.set(qn('w:ascii'), "Courier New")
+            run._element.rPr.rFonts.set(qn('w:hAnsi'), "Courier New")
+            run._element.rPr.rFonts.set(qn('w:cs'), "Liberation Mono")
 
 def get_next_invoice_number():
     count_file = "invoice_count.txt"
@@ -261,6 +268,9 @@ def generate_invoice(invoice_data):
         for run in paragraph.runs:
             run.font.name = "Courier New"
             run._element.rPr.rFonts.set(qn('w:eastAsia'), "Courier New")
+            run._element.rPr.rFonts.set(qn('w:ascii'), "Courier New")
+            run._element.rPr.rFonts.set(qn('w:hAnsi'), "Courier New")
+            run._element.rPr.rFonts.set(qn('w:cs'), "Liberation Mono")
     
     # Generate DOCX
     docx_output = io.BytesIO()
@@ -274,7 +284,7 @@ def generate_invoice(invoice_data):
     
     # Convert DOCX to PDF using LibreOffice
     try:
-        subprocess.run([
+        result = subprocess.run([
             "soffice",
             "--headless",
             "--convert-to",
@@ -282,9 +292,11 @@ def generate_invoice(invoice_data):
             temp_docx,
             "--outdir",
             "."
-        ], check=True, timeout=30)
+        ], check=True, timeout=30, capture_output=True, text=True)
+        if result.stderr:
+            st.warning(f"LibreOffice conversion warning: {result.stderr}")
     except subprocess.CalledProcessError as e:
-        raise Exception(f"LibreOffice conversion failed: {e}")
+        raise Exception(f"LibreOffice conversion failed: {e.stderr}")
     except subprocess.TimeoutExpired:
         raise Exception("LibreOffice conversion timed out")
     
