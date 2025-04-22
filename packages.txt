@@ -1,1 +1,2 @@
 libreoffice
+ttf-mscorefonts-installer
